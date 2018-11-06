@@ -17,6 +17,7 @@ class Game:
         self.scrollLength = 0
         self.rows_killed = 0
         self.running = True
+        self.ticks_passed = 0
 
         #Controls
         self.right_pressed = False
@@ -40,6 +41,7 @@ class Game:
         self.playing = True
         while self.playing:
             self.clock.tick(60)
+            self.ticks_passed += 1
             self.events()
             self.update()
             self.draw()
@@ -67,7 +69,7 @@ class Game:
     def update(self):
         self.allSprites.update() #runs .update() on all objects in allSprites
 
-        if len(self.rows) <= 22:
+        if len(self.rows) <= 15:
             self.load_new_section()
             
     def draw(self):
@@ -104,7 +106,6 @@ class Game:
         sectionNumber = randint(1,3)
         self.load_section_into_rows(str(sectionNumber))
         rowsLoaded = len(self.rows)
-        print("Loading new section, scrollLength: {}".format(self.scrollLength))
         for i in range(15):
             rowToSpawn = rowsLoaded-15+i
             self.spawn_row_of_platforms(rowToSpawn)
@@ -113,26 +114,5 @@ class Game:
 def main():
     game = Game()
     game.start()
-    
-##    while True:
-##        #Draw the background
-##
-##        #Draw the tiles
-##
-##        
-####        if p.grounded:
-####            if p.hspeed == 0:
-####                p.set_animation(player_idle_anim, looping=True)
-####            else:
-####                p.set_animation(player_run_anim, looping=True)
-####        p.change_frame(1)
-##
-##        p.display(game.display) #blit the player onto the game display surface
-##
-##        #Key presses
-##        
-##
-##        game.screen.blit(pg.transform.scale(game.display,(WINDOW_WIDTH, WINDOW_HEIGHT)),
-##                         (0,0))
 
 main()
