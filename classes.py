@@ -4,12 +4,14 @@ import math, os
 import constants
 
 class Spritesheet:
-    def __init__(self, filename):
-        self._spritesheet = pg.image.load(filename)
+    def __init__(self, filename, bgColor):
+        filename = os.path.join('resources','images','spritesheets',filename)
+        self._spritesheet = pg.image.load(filename).convert()
+        self.backgroundColor = bgColor
 
     def get_image(self, x, y, width, height):
         image = pg.Surface((width, height))
-        image.set_colorkey(constants.PLAYER_BG)
+        image.set_colorkey(self.backgroundColor)
         image.blit(self._spritesheet, (0, 0), (x, y, width, height))
         return image
 
@@ -18,6 +20,7 @@ class Platform(pg.sprite.Sprite):
         super().__init__()
         self.image = pg.Surface((width, height))
         self.image.fill(constants.PURPLE)
+        self.has_texture = False
         self.rect = self.image.get_rect()
         self.rect.x = x
         self.rect.y = y
@@ -88,7 +91,7 @@ class PhysicsObject(pg.sprite.Sprite):
 class Player(PhysicsObject):
     def __init__(self, game, x, y, width, height):
         super().__init__(game, x, y, width, height)
-        self.spritesheet = Spritesheet(os.path.join("resources", "images", "player.png"))
+        self.spritesheet = Spritesheet("player.png", constants.PLAYER_BG)
         self.animations = self.load_animations()
         self.game = game
         self.image = self.spritesheet.get_image(16, 478, 16, 24)

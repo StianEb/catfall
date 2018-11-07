@@ -18,6 +18,7 @@ class Game:
         self.rows_killed = 0
         self.running = True
         self.ticks_passed = 0
+        self.tilebook = self.initialize_tilebook()
 
         #Controls
         self.right_pressed = False
@@ -34,6 +35,8 @@ class Game:
         self.load_starting_section()
         for rowNumber in range(len(self.rows)):
             self.spawn_row_of_platforms(rowNumber)
+        for _ in range(len(self.rows)-1):
+            self.texture_next_row_of_tiles()
         
         self.run()
 
@@ -69,7 +72,7 @@ class Game:
     def update(self):
         self.allSprites.update() #runs .update() on all objects in allSprites
 
-        if len(self.rows) <= 15:
+        if len(self.rows) <= 16:
             self.load_new_section()
             
     def draw(self):
@@ -103,13 +106,117 @@ class Game:
         self.load_section_into_rows("start")
 
     def load_new_section(self):
+        
+        oldrowsLoaded = len(self.rows)
         sectionNumber = randint(1,3)
         self.load_section_into_rows(str(sectionNumber))
         rowsLoaded = len(self.rows)
         for i in range(15):
             rowToSpawn = rowsLoaded-15+i
             self.spawn_row_of_platforms(rowToSpawn)
+
+        for _ in range(rowsLoaded - oldrowsLoaded):
+            self.texture_next_row_of_tiles()
+
+    def initialize_tilebook(self):
+        soil_tiles = Spritesheet('soil-tiles.png', constants.BLACK)
+        tilebook = {}
+        tilebook['soil'] = {}
+        tilebook['soil']['alone'] = soil_tiles.get_image(0, 0, 20, 20)
+        tilebook['soil']['N'] = soil_tiles.get_image(60, 60, 20, 20)
+        tilebook['soil']['E'] = soil_tiles.get_image(20, 0, 20, 20)
+        tilebook['soil']['S'] = soil_tiles.get_image(60, 20, 20, 20)
+        tilebook['soil']['W'] = soil_tiles.get_image(60, 0, 20, 20)
+        tilebook['soil']['NE'] = soil_tiles.get_image(0, 60, 20, 20)
+        tilebook['soil']['NS'] = soil_tiles.get_image(60, 40, 20, 20)
+        tilebook['soil']['NW'] = soil_tiles.get_image(40, 60, 20, 20)
+        tilebook['soil']['ES'] = soil_tiles.get_image(0, 20, 20, 20)
+        tilebook['soil']['EW'] = soil_tiles.get_image(40, 0, 20, 20)
+        tilebook['soil']['SW'] = soil_tiles.get_image(40, 20, 20, 20)
+        tilebook['soil']['NES'] = soil_tiles.get_image(0, 40, 20, 20)
+        tilebook['soil']['NEW'] = soil_tiles.get_image(20, 60, 20, 20)
+        tilebook['soil']['NSW'] = soil_tiles.get_image(40, 40, 20, 20)
+        tilebook['soil']['ESW'] = soil_tiles.get_image(20, 20, 20, 20)
+        tilebook['soil']['NESW'] = soil_tiles.get_image(20, 40, 20, 20)
         
+        return tilebook
+    
+    def texture_next_row_of_tiles(self):
+        
+        for i, plat in enumerate(self.platforms):
+            if not plat.has_texture:
+                target_elevation = plat.rect.y
+                same_level = []
+                next_level = []
+                previous_level = []
+                
+                for j in range(i, len(self.platforms)):
+                    
+                    #Locate all platforms on that row
+                    if self.platforms[j].rect.y == target_elevation:
+                        same_level.append(self.platforms[j])
+                    #Locate the row below
+                    elif self.platforms[j].rect.y == target_elevation + plat.rect.height:
+                        next_level.append(self.platforms[j])
+                    else:
+                        break
+
+                if i == 0:
+                    previous_level = False
+                else:
+                    #Locate the row above
+                    for k in range(i-1, 0, -1):
+                        if self.platforms[k].rect.y == target_elevation - plat.rect.height:
+                            previous_level.append(self.platforms[k])
+                        else:
+                            break
+
+                if not next_level:
+                    print("Error: Tried to texture last existing row")
+                break
+        
+        for platform in same_level:
+            self.texture_tile(platform, previous_level, same_level, next_level)
+
+    def texture_tile(self, platform, upper, same, lower):
+        
+        up = False
+        right = False
+        down = False
+        left = False
+        
+        if not upper:
+            up = True
+        else:
+            for plat in upper:
+                if plat.rect.x == platform.rect.x:
+                    up = True
+
+        for plat in same:
+            if plat.rect.x == platform.rect.x - platform.rect.width:
+                left = True
+            elif plat.rect.x == platform.rect.x + platform.rect.width:
+                right = True
+
+        for plat in lower:
+            if plat.rect.x == platform.rect.x:
+                down = True
+
+        texture_ID = ''
+        if not (up or right or down or left):
+            texture_ID = 'alone'
+        if up:
+            texture_ID += 'N'
+        if right:
+            texture_ID += 'E'
+        if down:
+            texture_ID += 'S'
+        if left:
+            texture_ID += 'W'
+            
+        platform.image = self.tilebook['soil'][texture_ID]
+        platform.has_texture = True
+                    
 
 def main():
     game = Game()
