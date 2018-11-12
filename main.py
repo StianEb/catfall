@@ -1,3 +1,11 @@
+###
+#
+# TODO:
+# - Add a background
+# - Add progressively more enemies / obstacles
+# - Add a score mechanic
+# - Add a restart
+
 import pygame as pg
 from pygame.locals import *
 from constants import *
@@ -9,6 +17,10 @@ class Game:
     def __init__(self):
         pg.mixer.pre_init(44100, -16, 2, 2048)
         pg.init()
+
+        pg.mixer.music.load(os.path.join('resources','sounds','Chibi Ninja (Eric Skiff).wav'))
+        pg.mixer.music.play(-1)
+
         self.clock = pg.time.Clock()
         self.screen = pg.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
         self.truescreen = pg.Surface((200, 300))
@@ -18,16 +30,20 @@ class Game:
         self.rows_killed = 0
         self.running = True
         self.ticks_passed = 0
+        self.backgroundsSpawned = 0
         self.tilebook = self.initialize_tilebook()
 
         #Controls
         self.right_pressed = False
         self.left_pressed = False
         self.up_pressed = False
+        self.space_pressed = False
         self.platforms = []
 
     def start(self):
         self.allSprites = pg.sprite.Group()
+
+        #self.allSprites.add(Background('jungle.png', 0))
 
         self.player = Player(self, WINDOW_WIDTH//12, WINDOW_HEIGHT//12, 16, 24)
         self.allSprites.add(self.player)
@@ -61,6 +77,8 @@ class Game:
                     self.left_pressed = True
                 if event.key == K_UP:
                     self.up_pressed = True
+                if event.key == K_SPACE:
+                    self.space_pressed = True
             elif event.type == KEYUP:
                 if event.key == K_RIGHT:
                     self.right_pressed = False
@@ -68,6 +86,8 @@ class Game:
                     self.left_pressed = False
                 if event.key == K_UP:
                     self.up_pressed = False
+                if event.key == K_SPACE:
+                    self.space_pressed = False
 
     def update(self):
         self.allSprites.update() #runs .update() on all objects in allSprites
@@ -138,6 +158,7 @@ class Game:
         tilebook['soil']['NSW'] = soil_tiles.get_image(40, 40, 20, 20)
         tilebook['soil']['ESW'] = soil_tiles.get_image(20, 20, 20, 20)
         tilebook['soil']['NESW'] = soil_tiles.get_image(20, 40, 20, 20)
+        tilebook['soil']['corners'] = soil_tiles.get_image(80, 0, 20, 20)
         
         return tilebook
     
@@ -181,26 +202,49 @@ class Game:
     def texture_tile(self, platform, upper, same, lower):
         
         up = False
+        upleft = False
+        upright = False
         right = False
-        down = False
         left = False
+        downleft = False
+        down = False
+        downright = False
+
+        if platform.rect.x == 0:
+            upleft = True
+            left = True
+            downleft = True
+        elif platform.rect.x == 180:
+            upright = True
+            right = True
+            downright = True
         
         if not upper:
             up = True
+            upleft = True
+            upright = True
         else:
             for plat in upper:
                 if plat.rect.x == platform.rect.x:
                     up = True
+                elif plat.rect.x == platform.rect.x-20:
+                    upleft = True
+                elif plat.rect.x == platform.rect.x+20:
+                    upright = True
 
         for plat in same:
-            if plat.rect.x == platform.rect.x - platform.rect.width:
+            if plat.rect.x == platform.rect.x - platform.rect.width or platform.rect.left == 0:
                 left = True
-            elif plat.rect.x == platform.rect.x + platform.rect.width:
+            if plat.rect.x == platform.rect.x + platform.rect.width or platform.rect.left == 180:
                 right = True
 
         for plat in lower:
             if plat.rect.x == platform.rect.x:
                 down = True
+            elif plat.rect.x == platform.rect.x-20:
+                downleft = True
+            elif plat.rect.x == platform.rect.x+20:
+                downright = True
 
         texture_ID = ''
         if not (up or right or down or left):
@@ -214,7 +258,16 @@ class Game:
         if left:
             texture_ID += 'W'
             
-        platform.image = self.tilebook['soil'][texture_ID]
+        img = self.tilebook['soil'][texture_ID].copy()
+        if up and left and not upleft:
+            img.blit(self.tilebook['soil']['corners'], (0, 0), area=pg.Rect(0, 0, 10, 10))
+        if up and right and not upright:
+            img.blit(self.tilebook['soil']['corners'], (10, 0), area=pg.Rect(10, 0, 10, 10))
+        if down and left and not downleft:
+            img.blit(self.tilebook['soil']['corners'], (0, 10), area=pg.Rect(0, 10, 10, 10))
+        if down and right and not downright:
+            img.blit(self.tilebook['soil']['corners'], (10, 10), area=pg.Rect(10, 10, 10, 10))
+        platform.image = img
         platform.has_texture = True
                     
 

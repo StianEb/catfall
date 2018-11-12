@@ -15,6 +15,14 @@ class Spritesheet:
         image.blit(self._spritesheet, (0, 0), (x, y, width, height))
         return image
 
+class Background(pg.sprite.Sprite):
+    def __init__(self, filename, yPlacement):
+        super().__init__()
+        self.image = pg.image.load(os.path.join('resources','images','backgrounds',filename))
+        self.rect = self.image.get_rect()
+        self.rect.left = 0
+        self.rect.top = yPlacement
+
 class Platform(pg.sprite.Sprite):
     def __init__(self, x, y, width, height):
         super().__init__()
@@ -29,7 +37,7 @@ class PhysicsObject(pg.sprite.Sprite):
     def __init__(self, game, x, y , width, height):
         super().__init__()
         self.game = game
-        self.x = x #float values
+        self.x = x
         self.y = y
         
         self.rect = pg.Rect(x, y, width, height)
@@ -86,6 +94,80 @@ class PhysicsObject(pg.sprite.Sprite):
             if wall.rect.colliderect(self.rect):
                 collisions.append(wall)
         return collisions
+
+##    def list_collisions(self, walls):
+##        collisions = pg.sprite.spritecollide(self, walls, False, pg.sprite.collide_mask)
+##        return collisions
+
+class Bomb(PhysicsObject):
+    def __init__(self, game, x, y, width, height, hspeed, vspeed):
+        super().__init__(game, x, y, width, height)
+        self.game = game
+        self.spritesheet = Spritesheet("bomb.png", constants.WHITE)
+        self.animations = self.load_animations()
+        self.image = self.animations['preboom'][0]
+        self.currentAnimation = "preboom"
+        self.rect = self.image.get_rect()
+        self.rect.x = x
+        self.rect.y = y
+        self.x = x
+        self.y = y
+        self.lifespan = 2*(len(self.animations['preboom'])+len(self.animations['postboom']))
+        self.hspeed = hspeed
+        self.vspeed = -2 + vspeed/2
+        self.sound_boom = pg.mixer.Sound(os.path.join('resources', 'sounds', 'boom.wav'))
+
+    def update(self):
+        if self.lifespan > 2*len(self.animations["postboom"]):
+            self.vspeed += constants.GRAVITY
+        if self.vspeed > 15:
+            self.vspeed = 15
+        self.hspeed *= 0.97
+
+        collision_directions = self.update_position([self.hspeed, self.vspeed], self.game.platforms)
+        if collision_directions['bottom']:
+            self.vspeed = 0
+        elif collision_directions['right'] or collision_directions['left']:
+            self.hspeed = 0
+
+        if self.lifespan == 0:
+            self.kill()
+        if self.lifespan > 2*len(self.animations["postboom"]): #if lifespan > 30
+            self.image = self.animations["preboom"][len(self.animations["preboom"])-(self.lifespan - 2*len(self.animations['postboom']))//2-1]
+        elif self.lifespan == 2*len(self.animations["postboom"]):
+            self.explode()
+        else:
+            self.image = self.animations["postboom"][len(self.animations["postboom"])-self.lifespan//2-1]
+        self.lifespan -= 1
+
+    def explode(self):
+
+        self.hspeed = 0
+        self.vspeed = 0
+
+        explosionZone = Rect(self.rect.left-5, self.rect.top-5, self.rect.width+10, self.rect.height+10)
+
+        self.sound_boom.play()
+        
+    def load_animations(self):
+        '''returns a dictionary of lists, each list an animation cycle'''
+        animations = {}
+        pb1 = self.spritesheet.get_image(0, 0, 20, 20)
+        pb2 = self.spritesheet.get_image(20, 0, 20, 20)
+        pb3 = self.spritesheet.get_image(0, 20, 20, 20)
+        pb4 = self.spritesheet.get_image(20, 20, 20, 20)
+        pb5 = self.spritesheet.get_image(0, 40, 20, 20)
+        pb6 = self.spritesheet.get_image(20, 40, 20, 20)
+        animations['preboom'] = [pb1]*4 + [pb2]*4 + [pb3]*4 + [pb4]*4 + [pb5]*4 + [pb6]*4
+        pob1 = self.spritesheet.get_image(60, 40, 20, 20)
+        pob2 = self.spritesheet.get_image(40, 40, 20, 20)
+        pob3 = self.spritesheet.get_image(60, 20, 20, 20)
+        pob4 = self.spritesheet.get_image(40, 20, 20, 20)
+        pob5 = self.spritesheet.get_image(60, 0, 20, 20)
+        pob6 = self.spritesheet.get_image(40, 0, 20, 20)
+        animations['postboom'] = [pob2, pob2, pob1, pob1, pob1, pob2, pob2,
+                                  pob3, pob3, pob4, pob4, pob5, pob5, pob6, pob6]
+        return animations
         
 
 class Player(PhysicsObject):
@@ -95,6 +177,8 @@ class Player(PhysicsObject):
         self.animations = self.load_animations()
         self.game = game
         self.image = self.spritesheet.get_image(16, 478, 16, 24)
+##        self.mask = pg.mask.Mask((16,24))
+##        self.mask.fill()
         self.currentAnimation = 'standing'
         self.rect = self.image.get_rect()
         self.rect.x = x
@@ -106,6 +190,7 @@ class Player(PhysicsObject):
         self.vspeed = 0
         self.hspeed = 0
         self.debugTick = 0
+        self.canDropBomb = True
         self.sound_jump = pg.mixer.Sound(os.path.join('resources','sounds','jump.wav'))
 
     def update(self):
@@ -120,15 +205,15 @@ class Player(PhysicsObject):
         self.hspeed = 0
 
         #Key input / controls
-        if self.game.right_pressed == True:
+        if self.game.right_pressed:
             self.hspeed += 2
             if self.grounded:
                 self.currentAnimation = 'walking'
-        if self.game.left_pressed == True:
+        if self.game.left_pressed:
             self.hspeed -= 2
             if self.grounded:
                 self.currentAnimation = 'walking'
-        if self.game.up_pressed == True:
+        if self.game.up_pressed:
             if self.grounded:
                 self.grounded = False
                 self.vspeed = -4
@@ -136,7 +221,13 @@ class Player(PhysicsObject):
                 self.currentAnimation = 'jumping'
             elif self.vspeed < 0:
                 self.vspeed -= 0.2
-            
+        if self.game.space_pressed and self.canDropBomb:
+            bomb = Bomb(self.game, self.rect.x, self.rect.y, 20, 20, self.hspeed, self.vspeed)
+            self.game.allSprites.add(bomb)
+            self.canDropBomb = False
+        if not self.game.space_pressed:
+            self.canDropBomb = True
+
         collision_directions = self.update_position([self.hspeed, self.vspeed], self.game.platforms)
         if collision_directions['bottom']:
             self.grounded = True
