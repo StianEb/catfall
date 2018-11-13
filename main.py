@@ -1,10 +1,12 @@
 ###
 #
 # TODO:
-# - Add a background
-# - Add progressively more enemies / obstacles
-# - Add a score mechanic
-# - Add a restart
+
+# - Give limited number of bombs at start, display it somehow
+# - Add a score counter, keep highscore in file
+# - Add a death animation and a restart screen / function?
+# - Add a background?
+# - Would be nice: Powerups (More bombs, T-shirt)
 
 import pygame as pg
 from pygame.locals import *
@@ -32,6 +34,8 @@ class Game:
         self.ticks_passed = 0
         self.backgroundsSpawned = 0
         self.tilebook = self.initialize_tilebook()
+        self.luck = 0
+        self.spikes = []
 
         #Controls
         self.right_pressed = False
@@ -41,12 +45,12 @@ class Game:
         self.platforms = []
 
     def start(self):
-        self.allSprites = pg.sprite.Group()
+        self.allSprites = pg.sprite.LayeredUpdates()
 
         #self.allSprites.add(Background('jungle.png', 0))
 
         self.player = Player(self, WINDOW_WIDTH//12, WINDOW_HEIGHT//12, 16, 24)
-        self.allSprites.add(self.player)
+        self.allSprites.add(self.player, layer=-2)
 
         self.load_starting_section()
         for rowNumber in range(len(self.rows)):
@@ -104,12 +108,15 @@ class Game:
     def load_section_into_rows(self, sectionName):
         sectionPath = os.path.join('resources', 'images', 'sections', 'section_{}.png'.format(sectionName))
         sectionSurface = pg.image.load(sectionPath).convert_alpha()
+        height = sectionSurface.get_height()
         
-        for y in range(sectionSurface.get_height()):
+        for y in range(height):
             self.rows.append([])
             for x in range(sectionSurface.get_width()):
                 if sectionSurface.get_at((x, y))[:3] == (0, 0, 0):
                     self.rows[-1].append(x)
+
+        return height
 
     def spawn_row_of_platforms(self, row):
         if self.platforms:
@@ -128,11 +135,11 @@ class Game:
     def load_new_section(self):
         
         oldrowsLoaded = len(self.rows)
-        sectionNumber = randint(1,3)
-        self.load_section_into_rows(str(sectionNumber))
+        sectionNumber = randint(1,13)
+        height = self.load_section_into_rows(str(sectionNumber))
         rowsLoaded = len(self.rows)
-        for i in range(15):
-            rowToSpawn = rowsLoaded-15+i
+        for i in range(height):
+            rowToSpawn = rowsLoaded-height+i
             self.spawn_row_of_platforms(rowToSpawn)
 
         for _ in range(rowsLoaded - oldrowsLoaded):
@@ -251,12 +258,20 @@ class Game:
             texture_ID = 'alone'
         if up:
             texture_ID += 'N'
+        else:
+            self.maybe_spawn_spike(platform.rect.left+2, platform.rect.top-11, "N")
         if right:
             texture_ID += 'E'
+        else:
+            self.maybe_spawn_spike(platform.rect.right-4, platform.rect.top+2, "E")
         if down:
             texture_ID += 'S'
+        else:
+            self.maybe_spawn_spike(platform.rect.left+2, platform.rect.bottom-4, "S")
         if left:
             texture_ID += 'W'
+        else:
+            self.maybe_spawn_spike(platform.rect.left-11, platform.rect.top+2, "W")
             
         img = self.tilebook['soil'][texture_ID].copy()
         if up and left and not upleft:
@@ -269,7 +284,13 @@ class Game:
             img.blit(self.tilebook['soil']['corners'], (10, 10), area=pg.Rect(10, 10, 10, 10))
         platform.image = img
         platform.has_texture = True
-                    
+        platform.neighborkey = [upleft, up, upright, left, right, downleft, down, downright]
+
+    def maybe_spawn_spike(self, x, y, direction):
+        if randint(1,1000) > 990 - self.scrollLength/100:
+            spike = Spike(self, x, y, direction)
+            self.allSprites.add(spike, layer=-1)
+            self.spikes.append(spike)
 
 def main():
     game = Game()

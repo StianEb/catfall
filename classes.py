@@ -1,6 +1,6 @@
 import pygame as pg
 from pygame.locals import *
-import math, os
+import math, os, sys
 import constants
 
 class Spritesheet:
@@ -32,15 +32,27 @@ class Platform(pg.sprite.Sprite):
         self.rect = self.image.get_rect()
         self.rect.x = x
         self.rect.y = y
+        self.type = "platform"
+
+class Spike(pg.sprite.Sprite):
+    def __init__(self, game, x, y, direction):
+        super().__init__()
+        self.game = game
+        self.direction = direction
+        rotation_guide = {"N" : 0, "W" : 90, "S" : 180, "E" : 270}
+        self.image = pg.image.load(os.path.join('resources','images','spike_{}.png'.format(direction))).convert()
+        self.image.set_colorkey(constants.WHITE)
+        self.rect = self.image.get_rect()
+        self.type = "spike"
+        self.x = x
+        self.y = y
+        self.rect.x = x
+        self.rect.y = y
 
 class PhysicsObject(pg.sprite.Sprite):
     def __init__(self, game, x, y , width, height):
         super().__init__()
         self.game = game
-        self.x = x
-        self.y = y
-        
-        self.rect = pg.Rect(x, y, width, height)
 
     def update_position(self, posAdjustment, walls):
         '''Moves the object (updates rect) within the confines of the walls, returns dict collision_directions
@@ -52,7 +64,8 @@ class PhysicsObject(pg.sprite.Sprite):
 
         #Update horizontal position
         self.x += posAdjustment[0]
-        self.rect.x = int(self.x)
+        self.hitbox.x = int(self.x)
+        self.rect.x = int(self.x)-4
 
         #Check for collisions after horizontal movement
         collisions = self.list_collisions(walls)
@@ -61,37 +74,40 @@ class PhysicsObject(pg.sprite.Sprite):
             #If we were moving towards the right, adjust the rightmost edge of
             #our Rect to align with the leftmost edge of the wall
             if posAdjustment[0] > 0:
-                self.rect.right = wall.rect.left
+                self.hitbox.right = wall.rect.left
                 collision_directions['right'] = True
             elif posAdjustment[0] < 0:
-                self.rect.left = wall.rect.right
+                self.hitbox.left = wall.rect.right
                 collision_directions['left'] = True
 
             #Update self.x after collision adjustment
-            self.x = self.rect.x
+            self.x = self.hitbox.x
+            self.rect.x = self.x-4
                 
         #Update vertical position
         self.y += posAdjustment[1]
-        self.rect.y = int(self.y)
+        self.hitbox.y = int(self.y)
+        self.rect.y = int(self.y)-2
 
         #Check for collisions again after vertical movement
         collisions = self.list_collisions(walls)
         for wall in collisions:
             if posAdjustment[1] > 0:
-                self.rect.bottom = wall.rect.top
+                self.hitbox.bottom = wall.rect.top
                 collision_directions['bottom'] = True
             else:
-                self.rect.top = wall.rect.bottom
+                self.hitbox.top = wall.rect.bottom
                 collision_directions['top'] = True
 
-            self.y = self.rect.y
+            self.y = self.hitbox.y
+            self.rect.y = self.y-2
 
         return collision_directions
 
     def list_collisions(self, walls):
         collisions = []
         for wall in walls:
-            if wall.rect.colliderect(self.rect):
+            if wall.rect.colliderect(self.hitbox):
                 collisions.append(wall)
         return collisions
 
@@ -108,8 +124,10 @@ class Bomb(PhysicsObject):
         self.image = self.animations['preboom'][0]
         self.currentAnimation = "preboom"
         self.rect = self.image.get_rect()
-        self.rect.x = x
-        self.rect.y = y
+        self.rect.x = x-4
+        self.rect.y = y-2
+        self.hitbox = Rect(x, y, self.rect.width-8, self.rect.height-4)
+        self.type = "bomb"
         self.x = x
         self.y = y
         self.lifespan = 2*(len(self.animations['preboom'])+len(self.animations['postboom']))
@@ -145,7 +163,11 @@ class Bomb(PhysicsObject):
         self.hspeed = 0
         self.vspeed = 0
 
-        explosionZone = Rect(self.rect.left-5, self.rect.top-5, self.rect.width+10, self.rect.height+10)
+        explosionZone = Rect(self.rect.left-5, self.rect.top-5, self.rect.width+10, self.rect.width+10)
+        for spike in self.game.spikes:
+            if spike.rect.colliderect(explosionZone):
+                spike.kill()
+                self.game.spikes.remove(spike)
 
         self.sound_boom.play()
         
@@ -177,12 +199,14 @@ class Player(PhysicsObject):
         self.animations = self.load_animations()
         self.game = game
         self.image = self.spritesheet.get_image(16, 478, 16, 24)
+        self.hitbox = Rect(x, y, 8, 20)
 ##        self.mask = pg.mask.Mask((16,24))
 ##        self.mask.fill()
         self.currentAnimation = 'standing'
         self.rect = self.image.get_rect()
-        self.rect.x = x
-        self.rect.y = y
+        self.rect.x = x-4
+        self.rect.y = y-2
+        self.type = "player"
         self.x = x
         self.y = y
         self.grounded = False
@@ -196,10 +220,9 @@ class Player(PhysicsObject):
     def update(self):
         '''Update the player's position and animation'''
 
-        #Player movement
-
         #Gravity, speed caps
-        self.vspeed += constants.GRAVITY
+        if not self.grounded:
+            self.vspeed += constants.GRAVITY
         if self.vspeed > 8:
             self.vspeed = 8
         self.hspeed = 0
@@ -238,18 +261,26 @@ class Player(PhysicsObject):
         if collision_directions['top']:
             self.vspeed = 0
 
-        if self.rect.y > constants.SCROLL_HEIGHT:
-            self.game.scrollLength += self.rect.y - constants.SCROLL_HEIGHT
+        #Check if we've collided with a spike
+        self.die_if_spikes()
+
+        if self.hitbox.y > constants.SCROLL_HEIGHT:
+            self.game.scrollLength += self.hitbox.y - constants.SCROLL_HEIGHT
             for _ in range(int(self.game.scrollLength) // 20 - self.game.rows_killed):
                 self.game.rows.pop(0)
                 self.game.rows_killed += 1
             for sprite in self.game.allSprites:
                 if sprite != self:
-                    sprite.rect.y -= self.rect.y - constants.SCROLL_HEIGHT
+                    sprite.rect.y -= self.hitbox.y - constants.SCROLL_HEIGHT
                 if sprite.rect.bottom < 0:
+                    if sprite.type == "spike":
+                       self.game.spikes.remove(sprite)
+                    elif sprite.type == "platform":
+                        self.game.platforms.remove(sprite)
                     sprite.kill()
-            self.rect.y = constants.SCROLL_HEIGHT
-            self.y = self.rect.y
+            self.hitbox.y = constants.SCROLL_HEIGHT
+            self.y = self.hitbox.y
+            self.rect.y = self.y-2
 
         #Player animation
         if self.currentAnimation != 'standing' and self.grounded and self.hspeed == 0:
@@ -263,6 +294,22 @@ class Player(PhysicsObject):
             self.image = pg.transform.flip(self.image, True, False)
         elif not self.game.right_pressed and self.currentAnimation in ('jumping', 'falling'):
             self.image = self.animations['jumpingstraight'][0]
+
+    def die_if_spikes(self):
+        for spike in self.game.spikes:
+            if spike.rect.colliderect(self.hitbox):
+                triggered = False
+                if spike.direction == "N" and self.vspeed > 0:
+                    triggered = True
+                if spike.direction == "W" and self.hspeed > 0:
+                    triggered = True
+                if spike.direction == "S" and self.vspeed < 0:
+                    triggered = True
+                if spike.direction == "E" and self.hspeed < 0:
+                    triggered = True
+                if triggered:
+                    pg.quit()
+                    sys.exit()
 
     def load_animations(self):
         '''returns a dictionary of lists, each list an animation cycle'''
@@ -283,8 +330,11 @@ class Player(PhysicsObject):
 
         return animations
 
+    def spawnDeadFox(self):
+        dead_img = self.spritesheet.get_image(152, 491, 16, 24)
+
     def thereIsGroundBeneathMe(self):
-        slightlyLower = pg.Rect(self.rect.left, self.rect.top+1, self.rect.width, self.rect.height)
+        slightlyLower = pg.Rect(self.hitbox.left, self.hitbox.top+1, self.hitbox.width, self.hitbox.height)
         for wall in self.game.platforms:
             if wall.rect.colliderect(slightlyLower):
                 return True
