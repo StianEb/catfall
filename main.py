@@ -4,9 +4,10 @@
 
 # - Give limited number of bombs at start, display it somehow
 # - Add a score counter, keep highscore in file
-# - Add a death animation and a restart screen / function?
-# - Add a background?
+# - Add a death animation and a restart screen / function
+# - Add a background
 # - Would be nice: Powerups (More bombs, T-shirt)
+# - Would also be nice: More enemies / obstacles, more skill-based gameplay
 
 import pygame as pg
 from pygame.locals import *
@@ -27,27 +28,26 @@ class Game:
         self.screen = pg.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
         self.truescreen = pg.Surface((200, 300))
         pg.display.set_caption("CatFall")
+        self.tilebook = self.initialize_tilebook()
+
+
+    def start(self):
+        self.allSprites = pg.sprite.LayeredUpdates()
+        self.luck = 0
+        self.spikes = []
         self.rows = []
         self.scrollLength = 0
         self.rows_killed = 0
-        self.running = True
         self.ticks_passed = 0
         self.backgroundsSpawned = 0
-        self.tilebook = self.initialize_tilebook()
-        self.luck = 0
-        self.spikes = []
 
         #Controls
         self.right_pressed = False
         self.left_pressed = False
         self.up_pressed = False
+        self.down_pressed = False
         self.space_pressed = False
         self.platforms = []
-
-    def start(self):
-        self.allSprites = pg.sprite.LayeredUpdates()
-
-        #self.allSprites.add(Background('jungle.png', 0))
 
         self.player = Player(self, WINDOW_WIDTH//12, WINDOW_HEIGHT//12, 16, 24)
         self.allSprites.add(self.player, layer=-2)
@@ -61,13 +61,17 @@ class Game:
         self.run()
 
     def run(self):
-        self.playing = True
-        while self.playing:
+        self.alive = True
+        while self.alive:
             self.clock.tick(60)
             self.ticks_passed += 1
             self.events()
             self.update()
             self.draw()
+        self.gameover()
+
+    def gameover(self):
+        print("Game over!")
 
     def events(self):
         for event in pg.event.get():
@@ -81,6 +85,8 @@ class Game:
                     self.left_pressed = True
                 if event.key == K_UP:
                     self.up_pressed = True
+                if event.key == K_DOWN:
+                    self.down_pressed = True
                 if event.key == K_SPACE:
                     self.space_pressed = True
             elif event.type == KEYUP:
@@ -90,6 +96,8 @@ class Game:
                     self.left_pressed = False
                 if event.key == K_UP:
                     self.up_pressed = False
+                if event.key == K_DOWN:
+                    self.down_pressed = False
                 if event.key == K_SPACE:
                     self.space_pressed = False
 
@@ -294,6 +302,7 @@ class Game:
 
 def main():
     game = Game()
-    game.start()
+    while True:
+        game.start()
 
 main()

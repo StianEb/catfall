@@ -1,6 +1,7 @@
 import pygame as pg
 from pygame.locals import *
 import math, os, sys
+from random import randint
 import constants
 
 class Spritesheet:
@@ -14,6 +15,54 @@ class Spritesheet:
         image.set_colorkey(self.backgroundColor)
         image.blit(self._spritesheet, (0, 0), (x, y, width, height))
         return image
+
+class Butterfly(pg.sprite.Sprite):
+    def __init__(self, game, x, y):
+        super().__init__()
+        self.spritesheet = Spritesheet('butterfly.png', constants.WHITE)
+        self.animation = self.load_animation()
+        self.liveframes = 0
+        self.game = game
+        self.image = self.animation[self.liveframes % len(self.animation)]
+        self.rect = self.image.get_rect()
+        self.rect.x = x
+        self.rect.y = y
+        self.direction = randint(0,359)
+        self.type = "butterfly"
+        self.x = x
+        self.y = y
+        self.speed = 1.5
+
+    def load_animation(self):
+        f1 = self.spritesheet.get_image(0, 0, 16, 16)
+        f2 = self.spritesheet.get_image(16, 0, 16, 16)
+        f3 = self.spritesheet.get_image(32, 0, 16, 16)
+        animation = [f1, f1, f2, f2, f3, f3, f3, f2, f2]
+        return animation
+
+    def update(self):
+        self.liveframes += 1
+        self.direction += randint(-30,30)
+        if self.direction < 0:
+            self.direction += 360
+        elif self.direction >= 360:
+            self.direction -= 360
+        rad = math.radians(self.direction)
+        yAdjust = math.sin(rad) * self.speed * -1
+        xAdjust = math.cos(rad) * self.speed
+        self.x += xAdjust
+        self.y += yAdjust
+        
+        if self.x < -16:
+            self.x += 216
+        elif self.x > 200:
+            self.x -= 216
+            
+        self.rect.x = int(self.x)
+        self.rect.y = int(self.y)
+        self.image = self.animation[self.liveframes % len(self.animation)].copy()
+        self.image = pg.transform.rotate(self.image, self.direction)
+
 
 class Background(pg.sprite.Sprite):
     def __init__(self, filename, yPlacement):
@@ -132,7 +181,11 @@ class Bomb(PhysicsObject):
         self.y = y
         self.lifespan = 2*(len(self.animations['preboom'])+len(self.animations['postboom']))
         self.hspeed = hspeed
-        self.vspeed = -2 + vspeed/2
+        self.vspeed = vspeed
+        if vspeed > 0:
+            self.vspeed = 0
+        if not self.game.down_pressed:
+            self.vspeed -= 4
         self.sound_boom = pg.mixer.Sound(os.path.join('resources', 'sounds', 'boom.wav'))
 
     def update(self):
@@ -199,7 +252,7 @@ class Player(PhysicsObject):
         self.animations = self.load_animations()
         self.game = game
         self.image = self.spritesheet.get_image(16, 478, 16, 24)
-        self.hitbox = Rect(x, y, 8, 20)
+        self.hitbox = Rect(x, y, 8, 19)
 ##        self.mask = pg.mask.Mask((16,24))
 ##        self.mask.fill()
         self.currentAnimation = 'standing'
@@ -225,7 +278,6 @@ class Player(PhysicsObject):
             self.vspeed += constants.GRAVITY
         if self.vspeed > 8:
             self.vspeed = 8
-        self.hspeed = 0
 
         #Key input / controls
         if self.game.right_pressed:
@@ -247,6 +299,8 @@ class Player(PhysicsObject):
         if self.game.space_pressed and self.canDropBomb:
             bomb = Bomb(self.game, self.rect.x, self.rect.y, 20, 20, self.hspeed, self.vspeed)
             self.game.allSprites.add(bomb)
+            butt = Butterfly(self.game, self.x, self.y)
+            self.game.allSprites.add(butt, layer=2)
             self.canDropBomb = False
         if not self.game.space_pressed:
             self.canDropBomb = True
@@ -258,11 +312,6 @@ class Player(PhysicsObject):
         else:
             if not self.thereIsGroundBeneathMe():
                 self.grounded = False
-        if collision_directions['top']:
-            self.vspeed = 0
-
-        #Check if we've collided with a spike
-        self.die_if_spikes()
 
         if self.hitbox.y > constants.SCROLL_HEIGHT:
             self.game.scrollLength += self.hitbox.y - constants.SCROLL_HEIGHT
@@ -272,6 +321,8 @@ class Player(PhysicsObject):
             for sprite in self.game.allSprites:
                 if sprite != self:
                     sprite.rect.y -= self.hitbox.y - constants.SCROLL_HEIGHT
+                if sprite.type in ("butterfly", "bomb"):
+                    sprite.y -= self.hitbox.y - constants.SCROLL_HEIGHT
                 if sprite.rect.bottom < 0:
                     if sprite.type == "spike":
                        self.game.spikes.remove(sprite)
@@ -295,6 +346,10 @@ class Player(PhysicsObject):
         elif not self.game.right_pressed and self.currentAnimation in ('jumping', 'falling'):
             self.image = self.animations['jumpingstraight'][0]
 
+        self.hspeed = 0
+        #Check if we've collided with a spike
+        self.die_if_spikes()
+
     def die_if_spikes(self):
         for spike in self.game.spikes:
             if spike.rect.colliderect(self.hitbox):
@@ -308,8 +363,7 @@ class Player(PhysicsObject):
                 if spike.direction == "E" and self.hspeed < 0:
                     triggered = True
                 if triggered:
-                    pg.quit()
-                    sys.exit()
+                    self.game.isalive = False
 
     def load_animations(self):
         '''returns a dictionary of lists, each list an animation cycle'''
