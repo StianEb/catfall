@@ -37,7 +37,7 @@ class Butterfly(pg.sprite.Sprite):
         f1 = self.spritesheet.get_image(0, 0, 16, 16)
         f2 = self.spritesheet.get_image(16, 0, 16, 16)
         f3 = self.spritesheet.get_image(32, 0, 16, 16)
-        animation = [f1, f1, f2, f2, f3, f3, f3, f2, f2]
+        animation = [f1, f1, f1, f2, f2, f2, f3, f3, f3, f3, f3, f2, f2, f2]
         return animation
 
     def update(self):
@@ -253,8 +253,6 @@ class Player(PhysicsObject):
         self.game = game
         self.image = self.spritesheet.get_image(16, 478, 16, 24)
         self.hitbox = Rect(x, y, 8, 19)
-##        self.mask = pg.mask.Mask((16,24))
-##        self.mask.fill()
         self.currentAnimation = 'standing'
         self.rect = self.image.get_rect()
         self.rect.x = x-4
@@ -297,9 +295,11 @@ class Player(PhysicsObject):
             elif self.vspeed < 0:
                 self.vspeed -= 0.2
         if self.game.space_pressed and self.canDropBomb:
-            bomb = Bomb(self.game, self.rect.x, self.rect.y, 20, 20, self.hspeed, self.vspeed)
-            self.game.allSprites.add(bomb)
-            butt = Butterfly(self.game, self.x, self.y)
+            if self.game.bombs > 0:
+                bomb = Bomb(self.game, self.rect.x, self.rect.y, 20, 20, self.hspeed, self.vspeed)
+                self.game.allSprites.add(bomb)
+                self.game.bombs -= 1
+            butt = Butterfly(self.game, self.x+20, self.y)
             self.game.allSprites.add(butt, layer=2)
             self.canDropBomb = False
         if not self.game.space_pressed:
@@ -346,9 +346,9 @@ class Player(PhysicsObject):
         elif not self.game.right_pressed and self.currentAnimation in ('jumping', 'falling'):
             self.image = self.animations['jumpingstraight'][0]
 
-        self.hspeed = 0
         #Check if we've collided with a spike
         self.die_if_spikes()
+        self.hspeed = 0
 
     def die_if_spikes(self):
         for spike in self.game.spikes:
@@ -363,7 +363,10 @@ class Player(PhysicsObject):
                 if spike.direction == "E" and self.hspeed < 0:
                     triggered = True
                 if triggered:
-                    self.game.isalive = False
+                    self.game.alive = False
+                    self.spawnDeadFox()
+                    self.kill()
+                    pg.mixer.music.stop()
 
     def load_animations(self):
         '''returns a dictionary of lists, each list an animation cycle'''
@@ -381,11 +384,13 @@ class Player(PhysicsObject):
         animations['falling'] = [jDown]
         i1 = self.spritesheet.get_image(86, 465, 16, 24)
         animations['idle1'] = [i1, i1, i1, i1, i1, i1, i1, i1, i1, i1, i1]
-
-        return animations
+        return animations    
 
     def spawnDeadFox(self):
         dead_img = self.spritesheet.get_image(152, 491, 16, 24)
+        deadFox = DeadFox(self.game, self.rect.x, self.rect.y, dead_img)
+        self.game.allSprites.add(deadFox)
+        self.game.deadFox = deadFox
 
     def thereIsGroundBeneathMe(self):
         slightlyLower = pg.Rect(self.hitbox.left, self.hitbox.top+1, self.hitbox.width, self.hitbox.height)
@@ -394,4 +399,22 @@ class Player(PhysicsObject):
                 return True
         return False
 
+class DeadFox(pg.sprite.Sprite):
+    def __init__(self, game, x, y, dead_img):
+        super().__init__()
+        self.image = dead_img
+        self.rect = self.image.get_rect()
+        self.x = x
+        self.y = y
+        self.rect.x = int(self.x)
+        self.rect.y = int(self.y)
+        self.vspeed = -4
+
+    def update(self):
+        self.vspeed += constants.GRAVITY
+        self.y += self.vspeed
+        self.rect.y = self.y
+
+        if self.rect.top > 300:
+            self.kill()
         

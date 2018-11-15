@@ -2,18 +2,17 @@
 #
 # TODO:
 
-# - Give limited number of bombs at start, display it somehow
-# - Add a score counter, keep highscore in file
-# - Add a death animation and a restart screen / function
-# - Add a background
-# - Would be nice: Powerups (More bombs, T-shirt)
+# - Add a background of some sort?
+# - Make something happen when you touch / blow up butterflies
+# - Would be nice: Multiple tilesets, maybe changing as we get deeper
+# - Would be nice: Powerups (More bombs, T-shirt, better luck)
 # - Would also be nice: More enemies / obstacles, more skill-based gameplay
 
 import pygame as pg
 from pygame.locals import *
-from constants import *
+import constants
 from classes import *
-import sys, os
+import sys, os, time
 from random import randint
 
 class Game:
@@ -22,17 +21,21 @@ class Game:
         pg.init()
 
         pg.mixer.music.load(os.path.join('resources','sounds','Chibi Ninja (Eric Skiff).wav'))
-        pg.mixer.music.play(-1)
 
         self.clock = pg.time.Clock()
-        self.screen = pg.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
+        self.screen = pg.display.set_mode((constants.WINDOW_WIDTH, constants.WINDOW_HEIGHT))
         self.truescreen = pg.Surface((200, 300))
         pg.display.set_caption("CatFall")
         self.tilebook = self.initialize_tilebook()
-
+        self.allSprites = pg.sprite.LayeredUpdates()
+        self.guibook = self.load_icons()
+        self.font = pg.font.Font(pg.font.match_font('arial bold'), 40)
+        self.deadFox = None
 
     def start(self):
-        self.allSprites = pg.sprite.LayeredUpdates()
+
+        pg.mixer.music.play(-1)
+        
         self.luck = 0
         self.spikes = []
         self.rows = []
@@ -40,6 +43,8 @@ class Game:
         self.rows_killed = 0
         self.ticks_passed = 0
         self.backgroundsSpawned = 0
+        self.bombs = 3
+        self.score = 0
 
         #Controls
         self.right_pressed = False
@@ -49,7 +54,7 @@ class Game:
         self.space_pressed = False
         self.platforms = []
 
-        self.player = Player(self, WINDOW_WIDTH//12, WINDOW_HEIGHT//12, 16, 24)
+        self.player = Player(self, constants.WINDOW_WIDTH//12, constants.WINDOW_HEIGHT//12, 16, 24)
         self.allSprites.add(self.player, layer=-2)
 
         self.load_starting_section()
@@ -69,9 +74,6 @@ class Game:
             self.update()
             self.draw()
         self.gameover()
-
-    def gameover(self):
-        print("Game over!")
 
     def events(self):
         for event in pg.event.get():
@@ -106,12 +108,116 @@ class Game:
 
         if len(self.rows) <= 16:
             self.load_new_section()
+
+        self.score = self.scrollLength // 100
             
     def draw(self):
-        self.truescreen.fill(LIGHT_BLUE)
+        self.truescreen.fill(constants.LIGHT_BLUE)
         self.allSprites.draw(self.truescreen)
-        self.screen.blit(pg.transform.scale(self.truescreen, (WINDOW_WIDTH, WINDOW_HEIGHT)), (0, 0))
+        self.draw_bomb_icons()
+        self.screen.blit(pg.transform.scale(self.truescreen, (constants.WINDOW_WIDTH, constants.WINDOW_HEIGHT)), (0, 0))
+        self.draw_score()
         pg.display.flip()
+
+    def gameover(self):
+        restart = False
+        t0 = time.time()
+        fadeout = self.truescreen.copy()
+        fadeout.fill(constants.BLACK)
+        messageSurface, messageRect, old_highscore, OHsurface, OHrect = self.render_gameover_message()
+        while not restart:
+            self.clock.tick(60)
+            dead_time = time.time() - t0
+            restart = self.gameover_events(t0, restart, dead_time)
+            self.truescreen.fill(constants.LIGHT_BLUE)
+            self.allSprites.draw(self.truescreen)
+            self.draw_bomb_icons()
+            fadeout.set_alpha(int(dead_time*50))
+            self.truescreen.blit(fadeout, (0, 0))
+            self.screen.blit(pg.transform.scale(self.truescreen, (constants.WINDOW_WIDTH, constants.WINDOW_HEIGHT)), (0, 0))
+            self.draw_score()
+            if dead_time > 2:
+                self.screen.blit(messageSurface, messageRect)
+                if old_highscore:
+                    self.screen.blit(OHsurface, OHrect)
+            pg.display.flip()
+
+        for sprite in self.allSprites:
+            sprite.kill()
+
+    def render_gameover_message(self):
+
+        GOmessage = "Press any key to restart"
+        messageSurface = self.font.render(GOmessage, True, constants.RED)
+        messageRect = messageSurface.get_rect()
+        messageRect.x = constants.WINDOW_WIDTH // 2 - 150
+        messageRect.y = 300
+
+        OHsurface = None
+        OHrect = None
+        old_highscore = self.update_highscore()
+        if old_highscore:
+            OHmessage = "New highscore! Previous: {}".format(old_highscore)
+            OHsurface = self.font.render(OHmessage, True, constants.RED)
+            OHrect = OHsurface.get_rect()
+            OHrect.x = constants.WINDOW_WIDTH // 2 - 170
+            OHrect.y = 350
+            
+        return messageSurface, messageRect, old_highscore, OHsurface, OHrect
+                   
+
+    def gameover_events(self, t0, restart, dead_time):
+
+        self.deadFox.update()
+
+        for event in pg.event.get():
+            if event.type == QUIT:
+                pg.quit()
+                sys.exit()
+            elif event.type == KEYDOWN and dead_time > 2:
+                restart = True
+        return restart
+
+    def update_highscore(self):
+        highscore = 0
+        new_highscore = False
+        try:
+            with open('highscore.txt', 'r') as f:
+                l = f.readlines()
+                highscore = int(l[0].strip())
+        except OSError:
+            pass
+            
+        with open('highscore.txt', 'w') as f:
+            if highscore < self.score:
+                f.write(str(self.score))
+                new_highscore = True
+            else:
+                f.write(str(highscore))
+
+        if new_highscore:
+            return highscore
+        else:
+            return False
+
+    def draw_score(self):
+        scoremessage = "Score: {}".format(self.score)
+        scoreSurface = self.font.render(scoremessage, True, constants.GREEN)
+        scoreRect = scoreSurface.get_rect()
+        scoreRect.x = constants.WINDOW_WIDTH - 200
+        scoreRect.y = 30
+        self.screen.blit(scoreSurface, scoreRect)
+
+    def load_icons(self):
+        bomb_icon_filename = os.path.join('resources','images','bomb_icon.png')
+        book = {}
+        book['bomb_icon'] = pg.image.load(bomb_icon_filename).convert()
+        book['bomb_icon'].set_colorkey(constants.WHITE)
+        return book
+
+    def draw_bomb_icons(self):
+        for bomb in range(self.bombs):
+            self.truescreen.blit(self.guibook['bomb_icon'], (10+20*bomb, 10))
 
     def load_section_into_rows(self, sectionName):
         sectionPath = os.path.join('resources', 'images', 'sections', 'section_{}.png'.format(sectionName))
@@ -136,6 +242,11 @@ class Game:
             platform = Platform(20*xPosition, yPos, 20, 20)
             self.platforms.append(platform)
             self.allSprites.add(platform)
+
+        if yPos > 300:
+            if randint(1,1000) > 900 - self.luck:
+                butt = Butterfly(self, randint(0,200), yPos)
+                self.allSprites.add(butt, layer=2)
 
     def load_starting_section(self):
         self.load_section_into_rows("start")
@@ -295,7 +406,7 @@ class Game:
         platform.neighborkey = [upleft, up, upright, left, right, downleft, down, downright]
 
     def maybe_spawn_spike(self, x, y, direction):
-        if randint(1,1000) > 990 - self.scrollLength/100:
+        if randint(1,1000) > 990 - self.scrollLength/100 + self.luck:
             spike = Spike(self, x, y, direction)
             self.allSprites.add(spike, layer=-1)
             self.spikes.append(spike)
