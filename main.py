@@ -1,18 +1,3 @@
-###
-#
-# TODO:
-
-# - Better / more sections
-# - Powerups (T-shirt, bomb capacity, better luck)
-# - Background(s)
-
-# DONE:
-# - Credit to artists in README
-# - Game over music
-# - Fancy scrolling (discontinued, would require adjustments to physics engine)
-# - Higher challenge level (more enemies / obstacles)
-# - Interaction with butterflies
-# - Fancier bomb GUI
 
 import pygame as pg
 from pygame.locals import *
@@ -28,12 +13,13 @@ class Game:
         self.clock = pg.time.Clock()
         self.screen = pg.display.set_mode((constants.WINDOW_WIDTH, constants.WINDOW_HEIGHT))
         self.truescreen = pg.Surface((200, 300))
-        pg.display.set_caption("CatFall")
+        pg.display.set_caption("Catfall")
         self.tilebook = self.initialize_tilebook()
         self.allSprites = pg.sprite.LayeredUpdates()
         self.guibook = self.load_icons()
         self.font = pg.font.Font(pg.font.match_font('arial bold'), 40)
         self.deadFox = None
+        self.sound_gameover = pg.mixer.Sound(os.path.join('resources', 'sounds', 'game_over.wav'))
 
     def start(self):
 
@@ -43,12 +29,12 @@ class Game:
         self.luck = 0
         self.butterflies = []
         self.spikes = []
+        self.bomb_upgrades = []
         self.rows = []
         self.scrollLength = 0
         self.rows_killed = 0
         self.ticks_passed = 0
-        self.backgroundsSpawned = 0
-        self.maxbombs = 4
+        self.maxbombs = 3
         self.bombs = 3
         self.score = 0
 
@@ -116,7 +102,7 @@ class Game:
             self.load_new_section()
 
         self.score = self.scrollLength // 100
-        self.bombs += 0.005
+        self.bombs += 0.003
         if self.bombs > self.maxbombs:
             self.bombs = self.maxbombs
             
@@ -132,11 +118,12 @@ class Game:
         
         pg.mixer.music.load(os.path.join('resources','sounds','Come and Find Me (Eric Skiff).wav'))
         pg.mixer.music.play(-1)
+        self.sound_gameover.play()
         restart = False
         t0 = time.time()
         fadeout = self.truescreen.copy()
         fadeout.fill(constants.RED)
-        messageSurface, messageRect, old_highscore, OHsurface, OHrect = self.render_gameover_message()
+        messageSurface, messageRect, OHsurface, OHrect = self.render_gameover_message()
         while not restart:
             self.clock.tick(60)
             dead_time = time.time() - t0
@@ -154,8 +141,7 @@ class Game:
             if dead_time > 1:
                 if int(dead_time*2)%2 == 0:
                     self.screen.blit(messageSurface, messageRect)
-                if old_highscore:
-                    self.screen.blit(OHsurface, OHrect)
+                self.screen.blit(OHsurface, OHrect)
             pg.display.flip()
 
         for sprite in self.allSprites:
@@ -171,15 +157,21 @@ class Game:
 
         OHsurface = None
         OHrect = None
-        old_highscore = self.update_highscore()
-        if old_highscore:
-            OHmessage = "New highscore! Previous: {}".format(old_highscore)
+        new_high, oldscore = self.update_highscore()
+        if new_high:
+            OHmessage = "New highscore! Previous: {}".format(oldscore)
             OHsurface = self.font.render(OHmessage, True, constants.GREEN)
             OHrect = OHsurface.get_rect()
-            OHrect.x = constants.WINDOW_WIDTH // 2 - 170
+            OHrect.x = constants.WINDOW_WIDTH // 2 - OHrect.width//2
+            OHrect.y = 350
+        else:
+            OHmessage = "Score to beat: {}".format(oldscore)
+            OHsurface = self.font.render(OHmessage, True, constants.GREEN)
+            OHrect = OHsurface.get_rect()
+            OHrect.x = constants.WINDOW_WIDTH // 2 - OHrect.width//2
             OHrect.y = 350
             
-        return messageSurface, messageRect, old_highscore, OHsurface, OHrect
+        return messageSurface, messageRect, OHsurface, OHrect
                    
 
     def gameover_events(self, t0, restart, dead_time):
@@ -195,7 +187,7 @@ class Game:
         return restart
 
     def update_highscore(self):
-        highscore = 0
+        highscore = 0.0
         new_highscore = False
         try:
             with open('highscore.txt', 'r') as f:
@@ -211,17 +203,14 @@ class Game:
             else:
                 f.write(str(highscore))
 
-        if new_highscore:
-            return highscore
-        else:
-            return False
+        return (new_highscore, str(highscore))
 
     def draw_score(self):
         scoremessage = "Score: {}".format(self.score)
         scoreSurface = self.font.render(scoremessage, True, constants.GREEN)
         scoreRect = scoreSurface.get_rect()
-        scoreRect.x = constants.WINDOW_WIDTH - 200
-        scoreRect.y = 30
+        scoreRect.x = constants.WINDOW_WIDTH - 160
+        scoreRect.y = 10
         self.screen.blit(scoreSurface, scoreRect)
 
     def load_icons(self):
@@ -232,22 +221,25 @@ class Game:
         pale_bomb_icon_filename = os.path.join('resources','images','pale_bomb_icon.png')
         book['pale_bomb_icon'] = pg.image.load(pale_bomb_icon_filename).convert()
         book['pale_bomb_icon'].set_colorkey(constants.WHITE)
+        bomb_upgrade_filename = os.path.join('resources','images','bomb_upgrade.png')
+        book['bomb_upgrade'] = pg.image.load(bomb_upgrade_filename).convert()
+        book['bomb_upgrade'].set_colorkey(constants.WHITE)
         return book
 
     def draw_bomb_icons(self):
         if self.maxbombs > self.bombs:
             for ghost_bomb in range(self.maxbombs):
-                self.truescreen.blit(self.guibook['pale_bomb_icon'], (10+20*ghost_bomb, 10))
+                self.truescreen.blit(self.guibook['pale_bomb_icon'], (5+16*ghost_bomb, 8))
             partial_bomb_amount = self.bombs-int(self.bombs)
             partial_bomb_width = int(partial_bomb_amount * self.guibook['bomb_icon'].get_width())
             partial_bomb_height = self.guibook['bomb_icon'].get_height()
             partial_bomb = self.guibook['bomb_icon'].copy()
             partial_bomb.fill(constants.WHITE)
             partial_bomb.blit(self.guibook['bomb_icon'], (0, 0), area=Rect(0, 0, partial_bomb_width, partial_bomb_height))
-            self.truescreen.blit(partial_bomb, (10+20*int(self.bombs), 10))
+            self.truescreen.blit(partial_bomb, (5+16*int(self.bombs), 8))
             
         for bomb in range(int(self.bombs)):
-            self.truescreen.blit(self.guibook['bomb_icon'], (10+20*bomb, 10))
+            self.truescreen.blit(self.guibook['bomb_icon'], (5+16*bomb, 8))
 
 
     def load_section_into_rows(self, sectionName):
@@ -439,7 +431,7 @@ class Game:
         platform.neighborkey = [upleft, up, upright, left, right, downleft, down, downright]
 
     def maybe_spawn_spike(self, x, y, direction):
-        if randint(1,1000) > 990 - self.scrollLength/100 + self.luck:
+        if randint(1,1000) > 990 - self.scrollLength/30 + self.luck:
             spike = Spike(self, x, y, direction)
             self.allSprites.add(spike, layer=-1)
             self.spikes.append(spike)

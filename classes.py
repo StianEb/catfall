@@ -103,7 +103,7 @@ class Spike(pg.sprite.Sprite):
         self.rect.y = y
 
 class PhysicsObject(pg.sprite.Sprite):
-    def __init__(self, game, x, y , width, height):
+    def __init__(self, game):
         super().__init__()
         self.game = game
 
@@ -166,7 +166,7 @@ class PhysicsObject(pg.sprite.Sprite):
 
 class Bomb(PhysicsObject):
     def __init__(self, game, x, y, width, height, hspeed, vspeed):
-        super().__init__(game, x, y, width, height)
+        super().__init__(game)
         self.game = game
         self.spritesheet = Spritesheet("bomb.png", constants.WHITE)
         self.animations = self.load_animations()
@@ -211,6 +211,15 @@ class Bomb(PhysicsObject):
             self.image = self.animations["postboom"][len(self.animations["postboom"])-self.lifespan//2-1]
         self.lifespan -= 1
 
+        for spike in self.game.spikes:
+            if spike.rect.colliderect(self.rect):
+                self.explode()
+                self.lifespan = 2*len(self.animations["postboom"])
+        for butt in self.game.butterflies:
+            if butt.rect.colliderect(self.rect) and self.lifespan > 2*len(self.animations["postboom"]):
+                self.explode()
+                self.lifespan = 2*len(self.animations["postboom"])
+
     def explode(self):
 
         self.hspeed = 0
@@ -223,6 +232,8 @@ class Bomb(PhysicsObject):
                 self.game.spikes.remove(spike)
         for butt in self.game.butterflies:
             if butt.rect.colliderect(explosionZone):
+                if randint(1,3) == 3:
+                    self.game.allSprites.add(BombUpgrade(self.game, butt.rect.x, butt.rect.y))
                 butt.kill()
                 self.game.butterflies.remove(butt)
 
@@ -251,7 +262,7 @@ class Bomb(PhysicsObject):
 
 class Player(PhysicsObject):
     def __init__(self, game, x, y, width, height):
-        super().__init__(game, x, y, width, height)
+        super().__init__(game)
         self.spritesheet = Spritesheet("player.png", constants.PLAYER_BG)
         self.animations = self.load_animations()
         self.game = game
@@ -334,6 +345,8 @@ class Player(PhysicsObject):
                         self.game.platforms.remove(sprite)
                     elif sprite.type == "butterfly":
                         self.game.butterflies.remove(sprite)
+                    elif sprite.type == "bomb upgrade":
+                        self.game.bomb_upgrades.remove(sprite)
                     sprite.kill()
             self.hitbox.y -= scrollBonus
             self.y = self.hitbox.y
@@ -357,9 +370,20 @@ class Player(PhysicsObject):
 
         #Check if we've collided with a butterfly
         self.butterfly_collision()
+
+        #Check if we've collided with a bomb upgrade
+        self.bomb_upgrade_collision()
+        
         #Reset hspeed
         self.hspeed = 0
 
+    def bomb_upgrade_collision(self):
+        for bu in self.game.bomb_upgrades:
+            if bu.hitbox.colliderect(self.hitbox):
+                if self.game.maxbombs < 11:
+                    self.game.maxbombs += 1
+                bu.kill()
+                self.game.bomb_upgrades.remove(bu)
     def butterfly_collision(self):
         for butt in self.game.butterflies:
             if butt.hitbox.colliderect(self.hitbox):
@@ -435,4 +459,30 @@ class DeadFox(pg.sprite.Sprite):
 
         if self.rect.top > 300:
             self.kill()
+
+class BombUpgrade(PhysicsObject):
+    def __init__(self, game, x, y):
+        super().__init__(game)
+        self.game = game
+        self.image = self.game.guibook['bomb_upgrade']
+        self.rect = self.image.get_rect()
+        self.hitbox = Rect(x, y, self.rect.width-8, self.rect.height-4)
+        self.type = 'bomb upgrade'
+        self.x = x
+        self.y = y
+        self.rect.x = x
+        self.rect.y = y
+        self.vspeed = -3
+        self.hspeed = randint(-2,2)
+        self.game.bomb_upgrades.append(self)
+
+    def update(self):
+        self.vspeed += constants.GRAVITY
+        self.hspeed *= 0.97
+
+        collision_directions = self.update_position([self.hspeed, self.vspeed], self.game.platforms)
+        if collision_directions['bottom']:
+            self.vspeed = 0
+        elif collision_directions['right'] or collision_directions['left']:
+            self.hspeed = 0
         
