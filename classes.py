@@ -24,6 +24,7 @@ class Butterfly(pg.sprite.Sprite):
         self.liveframes = 0
         self.game = game
         self.image = self.animation[self.liveframes % len(self.animation)]
+        self.hitbox = Rect(x+6, y+6, 4, 4)
         self.rect = self.image.get_rect()
         self.rect.x = x
         self.rect.y = y
@@ -62,6 +63,9 @@ class Butterfly(pg.sprite.Sprite):
         self.rect.y = int(self.y)
         self.image = self.animation[self.liveframes % len(self.animation)].copy()
         self.image = pg.transform.rotate(self.image, self.direction)
+
+        self.hitbox.x = self.x+6
+        self.hitbox.y = self.y+6
 
 
 class Background(pg.sprite.Sprite):
@@ -160,10 +164,6 @@ class PhysicsObject(pg.sprite.Sprite):
                 collisions.append(wall)
         return collisions
 
-##    def list_collisions(self, walls):
-##        collisions = pg.sprite.spritecollide(self, walls, False, pg.sprite.collide_mask)
-##        return collisions
-
 class Bomb(PhysicsObject):
     def __init__(self, game, x, y, width, height, hspeed, vspeed):
         super().__init__(game, x, y, width, height)
@@ -221,6 +221,10 @@ class Bomb(PhysicsObject):
             if spike.rect.colliderect(explosionZone):
                 spike.kill()
                 self.game.spikes.remove(spike)
+        for butt in self.game.butterflies:
+            if butt.rect.colliderect(explosionZone):
+                butt.kill()
+                self.game.butterflies.remove(butt)
 
         self.sound_boom.play()
         
@@ -299,8 +303,6 @@ class Player(PhysicsObject):
                 bomb = Bomb(self.game, self.rect.x, self.rect.y, 20, 20, self.hspeed, self.vspeed)
                 self.game.allSprites.add(bomb)
                 self.game.bombs -= 1
-            butt = Butterfly(self.game, self.x+20, self.y)
-            self.game.allSprites.add(butt, layer=2)
             self.canDropBomb = False
         if not self.game.space_pressed:
             self.canDropBomb = True
@@ -313,25 +315,29 @@ class Player(PhysicsObject):
             if not self.thereIsGroundBeneathMe():
                 self.grounded = False
 
+        #Screen scrolling, object unloading
         if self.hitbox.y > constants.SCROLL_HEIGHT:
-            self.game.scrollLength += self.hitbox.y - constants.SCROLL_HEIGHT
+            scrollBonus = self.hitbox.y - constants.SCROLL_HEIGHT
+            self.game.scrollLength += scrollBonus
             for _ in range(int(self.game.scrollLength) // 20 - self.game.rows_killed):
                 self.game.rows.pop(0)
                 self.game.rows_killed += 1
             for sprite in self.game.allSprites:
                 if sprite != self:
-                    sprite.rect.y -= self.hitbox.y - constants.SCROLL_HEIGHT
+                    sprite.rect.y -= scrollBonus
                 if sprite.type in ("butterfly", "bomb"):
-                    sprite.y -= self.hitbox.y - constants.SCROLL_HEIGHT
+                    sprite.y -= scrollBonus
                 if sprite.rect.bottom < 0:
                     if sprite.type == "spike":
                        self.game.spikes.remove(sprite)
                     elif sprite.type == "platform":
                         self.game.platforms.remove(sprite)
+                    elif sprite.type == "butterfly":
+                        self.game.butterflies.remove(sprite)
                     sprite.kill()
-            self.hitbox.y = constants.SCROLL_HEIGHT
+            self.hitbox.y -= scrollBonus
             self.y = self.hitbox.y
-            self.rect.y = self.y-2
+            self.rect.y = int(self.y-2)
 
         #Player animation
         if self.currentAnimation != 'standing' and self.grounded and self.hspeed == 0:
@@ -347,10 +353,19 @@ class Player(PhysicsObject):
             self.image = self.animations['jumpingstraight'][0]
 
         #Check if we've collided with a spike
-        self.die_if_spikes()
+        self.spike_collision()
+
+        #Check if we've collided with a butterfly
+        self.butterfly_collision()
+        #Reset hspeed
         self.hspeed = 0
 
-    def die_if_spikes(self):
+    def butterfly_collision(self):
+        for butt in self.game.butterflies:
+            if butt.hitbox.colliderect(self.hitbox):
+                self.die()
+
+    def spike_collision(self):
         for spike in self.game.spikes:
             if spike.rect.colliderect(self.hitbox):
                 triggered = False
@@ -363,10 +378,13 @@ class Player(PhysicsObject):
                 if spike.direction == "E" and self.hspeed < 0:
                     triggered = True
                 if triggered:
-                    self.game.alive = False
-                    self.spawnDeadFox()
-                    self.kill()
-                    pg.mixer.music.stop()
+                    self.die()
+
+    def die(self):
+        self.game.alive = False
+        self.spawnDeadFox()
+        self.kill()
+        pg.mixer.music.stop()
 
     def load_animations(self):
         '''returns a dictionary of lists, each list an animation cycle'''

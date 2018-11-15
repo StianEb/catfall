@@ -2,11 +2,17 @@
 #
 # TODO:
 
-# - Add a background of some sort?
-# - Make something happen when you touch / blow up butterflies
-# - Would be nice: Multiple tilesets, maybe changing as we get deeper
-# - Would be nice: Powerups (More bombs, T-shirt, better luck)
-# - Would also be nice: More enemies / obstacles, more skill-based gameplay
+# - Better / more sections
+# - Powerups (T-shirt, bomb capacity, better luck)
+# - Background(s)
+
+# DONE:
+# - Credit to artists in README
+# - Game over music
+# - Fancy scrolling (discontinued, would require adjustments to physics engine)
+# - Higher challenge level (more enemies / obstacles)
+# - Interaction with butterflies
+# - Fancier bomb GUI
 
 import pygame as pg
 from pygame.locals import *
@@ -19,9 +25,6 @@ class Game:
     def __init__(self):
         pg.mixer.pre_init(44100, -16, 2, 2048)
         pg.init()
-
-        pg.mixer.music.load(os.path.join('resources','sounds','Chibi Ninja (Eric Skiff).wav'))
-
         self.clock = pg.time.Clock()
         self.screen = pg.display.set_mode((constants.WINDOW_WIDTH, constants.WINDOW_HEIGHT))
         self.truescreen = pg.Surface((200, 300))
@@ -34,15 +37,18 @@ class Game:
 
     def start(self):
 
+        pg.mixer.music.load(os.path.join('resources','sounds','Chibi Ninja (Eric Skiff).wav'))
         pg.mixer.music.play(-1)
         
         self.luck = 0
+        self.butterflies = []
         self.spikes = []
         self.rows = []
         self.scrollLength = 0
         self.rows_killed = 0
         self.ticks_passed = 0
         self.backgroundsSpawned = 0
+        self.maxbombs = 4
         self.bombs = 3
         self.score = 0
 
@@ -110,6 +116,9 @@ class Game:
             self.load_new_section()
 
         self.score = self.scrollLength // 100
+        self.bombs += 0.005
+        if self.bombs > self.maxbombs:
+            self.bombs = self.maxbombs
             
     def draw(self):
         self.truescreen.fill(constants.LIGHT_BLUE)
@@ -120,10 +129,13 @@ class Game:
         pg.display.flip()
 
     def gameover(self):
+        
+        pg.mixer.music.load(os.path.join('resources','sounds','Come and Find Me (Eric Skiff).wav'))
+        pg.mixer.music.play(-1)
         restart = False
         t0 = time.time()
         fadeout = self.truescreen.copy()
-        fadeout.fill(constants.BLACK)
+        fadeout.fill(constants.RED)
         messageSurface, messageRect, old_highscore, OHsurface, OHrect = self.render_gameover_message()
         while not restart:
             self.clock.tick(60)
@@ -132,12 +144,16 @@ class Game:
             self.truescreen.fill(constants.LIGHT_BLUE)
             self.allSprites.draw(self.truescreen)
             self.draw_bomb_icons()
-            fadeout.set_alpha(int(dead_time*50))
+            fadeAlpha = int(dead_time*20)
+            if fadeAlpha > 100:
+                fadeAlpha = 100
+            fadeout.set_alpha(fadeAlpha)
             self.truescreen.blit(fadeout, (0, 0))
             self.screen.blit(pg.transform.scale(self.truescreen, (constants.WINDOW_WIDTH, constants.WINDOW_HEIGHT)), (0, 0))
             self.draw_score()
-            if dead_time > 2:
-                self.screen.blit(messageSurface, messageRect)
+            if dead_time > 1:
+                if int(dead_time*2)%2 == 0:
+                    self.screen.blit(messageSurface, messageRect)
                 if old_highscore:
                     self.screen.blit(OHsurface, OHrect)
             pg.display.flip()
@@ -148,17 +164,17 @@ class Game:
     def render_gameover_message(self):
 
         GOmessage = "Press any key to restart"
-        messageSurface = self.font.render(GOmessage, True, constants.RED)
+        messageSurface = self.font.render(GOmessage, True, constants.BLACK)
         messageRect = messageSurface.get_rect()
         messageRect.x = constants.WINDOW_WIDTH // 2 - 150
-        messageRect.y = 300
+        messageRect.y = 750
 
         OHsurface = None
         OHrect = None
         old_highscore = self.update_highscore()
         if old_highscore:
             OHmessage = "New highscore! Previous: {}".format(old_highscore)
-            OHsurface = self.font.render(OHmessage, True, constants.RED)
+            OHsurface = self.font.render(OHmessage, True, constants.GREEN)
             OHrect = OHsurface.get_rect()
             OHrect.x = constants.WINDOW_WIDTH // 2 - 170
             OHrect.y = 350
@@ -213,11 +229,26 @@ class Game:
         book = {}
         book['bomb_icon'] = pg.image.load(bomb_icon_filename).convert()
         book['bomb_icon'].set_colorkey(constants.WHITE)
+        pale_bomb_icon_filename = os.path.join('resources','images','pale_bomb_icon.png')
+        book['pale_bomb_icon'] = pg.image.load(pale_bomb_icon_filename).convert()
+        book['pale_bomb_icon'].set_colorkey(constants.WHITE)
         return book
 
     def draw_bomb_icons(self):
-        for bomb in range(self.bombs):
+        if self.maxbombs > self.bombs:
+            for ghost_bomb in range(self.maxbombs):
+                self.truescreen.blit(self.guibook['pale_bomb_icon'], (10+20*ghost_bomb, 10))
+            partial_bomb_amount = self.bombs-int(self.bombs)
+            partial_bomb_width = int(partial_bomb_amount * self.guibook['bomb_icon'].get_width())
+            partial_bomb_height = self.guibook['bomb_icon'].get_height()
+            partial_bomb = self.guibook['bomb_icon'].copy()
+            partial_bomb.fill(constants.WHITE)
+            partial_bomb.blit(self.guibook['bomb_icon'], (0, 0), area=Rect(0, 0, partial_bomb_width, partial_bomb_height))
+            self.truescreen.blit(partial_bomb, (10+20*int(self.bombs), 10))
+            
+        for bomb in range(int(self.bombs)):
             self.truescreen.blit(self.guibook['bomb_icon'], (10+20*bomb, 10))
+
 
     def load_section_into_rows(self, sectionName):
         sectionPath = os.path.join('resources', 'images', 'sections', 'section_{}.png'.format(sectionName))
@@ -247,6 +278,7 @@ class Game:
             if randint(1,1000) > 900 - self.luck:
                 butt = Butterfly(self, randint(0,200), yPos)
                 self.allSprites.add(butt, layer=2)
+                self.butterflies.append(butt)
 
     def load_starting_section(self):
         self.load_section_into_rows("start")
@@ -254,7 +286,8 @@ class Game:
     def load_new_section(self):
         
         oldrowsLoaded = len(self.rows)
-        sectionNumber = randint(1,13)
+        sectionsToLoad = len(os.listdir(os.path.join('resources', 'images', 'sections'))) - 1
+        sectionNumber = randint(1,sectionsToLoad)
         height = self.load_section_into_rows(str(sectionNumber))
         rowsLoaded = len(self.rows)
         for i in range(height):
