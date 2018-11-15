@@ -8,6 +8,7 @@ Space to place a bomb
 
 LEVEL EDITOR
 Feel free to change the PNGs in the 'sections' folder to edit the level generation.
+You can even add more sections, just follow the naming pattern!
 
 CREDITS
 Music: Eric Skiff - https://ericskiff.com/music/
